@@ -1,0 +1,78 @@
+name: Build lilygo-t-embed-cc1101
+
+on:
+  pull_request:
+    branches:
+      - main
+
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  compile_sketch:
+    name: Build ESP32-S3 - lilygo-t-embed-cc1101
+    runs-on: ubuntu-latest
+
+    strategy:
+      fail-fast: false
+      matrix:
+        board:
+          - name: "ESP32-S3 - lilygo-t-embed-cc1101"
+            env: "lilygo-t-embed-cc1101"
+            partitions:
+              bootloader_addr: "0x1000"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.13"
+
+      - name: Install PlatformIO
+        run: |
+          pip install --upgrade pip
+          pip install platformio requests esptool intelhex
+
+      - name: Inject build metadata
+        run: |
+          if [[ "${{ github.ref_type }}" == "tag" ]]; then
+            VERSION="${{ github.ref_name }}"
+          else
+            VERSION="${GITHUB_SHA::7}"
+          fi
+
+          sed -i "s/-DBRUCE_VERSION=/-DBRUCE_VERSION='\"$VERSION\"' ; /g" platformio.ini
+          sed -i "s/-DGIT_COMMIT_HASH='\"Homebrew\"'/\!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"'\$\(git describe --always --dirty)'\\\\\\\\\"'/g" platformio.ini
+
+          echo "===== platformio.ini ====="
+          cat platformio.ini
+
+      - name: Build firmware
+        run: |
+          platformio run -e lilygo-t-embed-cc1101
+
+      - name: Upload artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Bruce-lilygo-t-embed-cc1101
+          path: Bruce-*.bin
+          retention-days: 5
+          if-no-files-found: error
+
+      - name: Commit and push firmware
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          mkdir -p firmware/lilygo-t-embed-cc1101
+          mv Bruce-*.bin firmware/lilygo-t-embed-cc1101/
+
+          git add firmware/
+          git commit -m "build: firmware lilygo-t-embed-cc1101 ($GITHUB_SHA)" || echo "Nothing to commit"
+          git push
