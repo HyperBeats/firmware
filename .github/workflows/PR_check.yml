@@ -4,6 +4,7 @@ on:
   pull_request:
     branches:
       - main
+
   workflow_dispatch:
     inputs:
       board:
@@ -11,119 +12,109 @@ on:
         type: choice
         required: true
         default: "M5Cardputer"
-        options: ["M5Cardputer", "M5StickCPlus2", "ESP32-S3", "lilygo-t-embed-cc1101"]
+        options:
+          - M5Cardputer
+          - M5StickCPlus2
+          - ESP32-S3
+          - lilygo-t-embed-cc1101
+
+permissions:
+  contents: write
 
 jobs:
   compile_sketch:
     name: Build ${{ matrix.board.name }}
     runs-on: ubuntu-latest
+
     strategy:
       fail-fast: false
       matrix:
         board:
-          - {
-              name: "ESP32-S3 - M5Cardputer",
-              env: "m5stack-cardputer",
-              partitions: { bootloader_addr: "0x0000" },
-            }
-          - {
-              name: "ESP32-S3 - lilygo-t-embed-cc1101",
-              env: "lilygo-t-embed-cc1101",
-              partitions: { bootloader_addr: "0x1000" },
-            }
-          - {
-              name: "ESP32 - M5StickCPlus2",
-              env: "m5stack-cplus2",
-              partitions: { bootloader_addr: "0x1000" },
-            }
-          - {
-              name: "Headless: ESP32-S3",
-              env: "esp32-s3-devkitc-1",
-              partitions: { bootloader_addr: "0x0" },
-            }
-          - {
-              name: "CoreS3",
-              env: "m5stack-cores3",
-              partitions: { bootloader_addr: "0x0" },
-            }
-          - {
-              name: "Launcher based environment: CYD",
-              env: "LAUNCHER_CYD-2432S028",
-              partitions: { bootloader_addr: "0x1000" },
-            }
-          - {
-              name: "ESP32-C5",
-              env: "esp32-c5",
-              partitions: { bootloader_addr: "0x2000" },
-            }
-    steps:
-      - uses: actions/checkout@v4
+          - name: "ESP32-S3 - M5Cardputer"
+            env: "m5stack-cardputer"
+            partitions:
+              bootloader_addr: "0x1000"
 
-      - id: build
-        name: setup Python
+          - name: "ESP32-S3 - lilygo-t-embed-cc1101"
+            env: "lilygo-t-embed-cc1101"
+            partitions:
+              bootloader_addr: "0x1000"
+
+          - name: "ESP32 - M5StickCPlus2"
+            env: "m5stack-cplus2"
+            partitions:
+              bootloader_addr: "0x1000"
+
+          - name: "Headless: ESP32-S3"
+            env: "esp32-s3-devkitc-1"
+            partitions:
+              bootloader_addr: "0x1000"
+
+          - name: "CoreS3"
+            env: "m5stack-cores3"
+            partitions:
+              bootloader_addr: "0x1000"
+
+          - name: "Launcher based environment: CYD"
+            env: "LAUNCHER_CYD-2432S028"
+            partitions:
+              bootloader_addr: "0x1000"
+
+          - name: "ESP32-C5"
+            env: "esp32-c5"
+            partitions:
+              bootloader_addr: "0x2000"
+
+    steps:
+      - name: Checkout repo
+        uses: actions/checkout@v4
+
+      - name: Setup Python
         uses: actions/setup-python@v5
         with:
           python-version: "3.13"
 
-      # - name: Cache pip
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: ~/.cache/pip
-      #     key: ${{ runner.os }}-pip-${{ hashFiles('**/requirements.txt') }}
-      #     restore-keys: |
-      #       ${{ runner.os }}-pip-
-
-      # - name: Cache PlatformIO
-      #   uses: actions/cache@v4
-      #   with:
-      #     path: |
-      #       ~/.platformio
-      #     key: Bruce-platformio-${{ hashFiles('**/platformio.ini') }}
-      #     restore-keys: Bruce-platformio-
-
-      # - name: Restore PIO
-      #   uses: actions/cache/restore@v4
-      #   with:
-      #     path: |
-      #       ${{ github.workspace }}/.pio
-      #     key: Bruce-pio-${{ matrix.board.env }}-${{ github.run_id }}-${{ github.run_attempt }}
-      #     restore-keys: |
-      #           Bruce-pio-${{ matrix.board.env }}-
-
-      - name: Install PlatformIO Core
+      - name: Install PlatformIO
         run: |
+          pip install --upgrade pip
           pip install platformio requests esptool intelhex
 
+      - name: Inject build metadata
+        run: |
           if [[ "${{ github.ref_type }}" == "tag" ]]; then
-            version=${{ github.ref_name }}
+            VERSION="${{ github.ref_name }}"
           else
-            version="${GITHUB_SHA::7}"
+            VERSION="${GITHUB_SHA::7}"
           fi
 
-          sed -i "s/-DBRUCE_VERSION=/-DBRUCE_VERSION='\"$version\"' ; /g" ./platformio.ini
-          sed -i "s/-DGIT_COMMIT_HASH='\"Homebrew\"'/\!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"'\$\(git describe --always --dirty)'\\\\\\\\\"'/g" ./platformio.ini
+          sed -i "s/-DBRUCE_VERSION=/-DBRUCE_VERSION='\"$VERSION\"' ; /g" platformio.ini
+          sed -i "s/-DGIT_COMMIT_HASH='\"Homebrew\"'/\!echo '-DGIT_COMMIT_HASH=\\\\\\\\\"'\$\(git describe --always --dirty)'\\\\\\\\\"'/g" platformio.ini
 
-          cat ./platformio.ini
+          echo "===== platformio.ini ====="
+          cat platformio.ini
 
-      - name: Run Compile
+      - name: Build firmware
         run: |
           platformio run -e ${{ matrix.board.env }}
 
-      # - name: Cache PIO
-      #   uses: actions/cache/save@v4
-      #   with:
-      #     path: |
-      #       ${{ github.workspace }}/.pio
-      #     key: Bruce-pio-${{ matrix.board.env }}-${{ github.run_id }}-${{ github.run_attempt }}
-
-      # - name: Merge Files
-      #   run: |
-      #    pio run -e ${{ matrix.board.env }} -t build-firmware
-
-      - name: Upload ${{ matrix.board.name }}
+      - name: Upload artifact (debug)
         uses: actions/upload-artifact@v4
         with:
           name: Bruce-${{ matrix.board.env }}
           path: Bruce-*.bin
           retention-days: 5
           if-no-files-found: error
+
+      - name: Commit and push firmware
+        if: github.event_name != 'pull_request'
+        run: |
+          git config user.name "github-actions"
+          git config user.email "github-actions@github.com"
+
+          mkdir -p firmware/${{ matrix.board.env }}
+
+          mv Bruce-*.bin firmware/${{ matrix.board.env }}/
+
+          git add firmware/
+          git commit -m "build: firmware ${{ matrix.board.env }} ($GITHUB_SHA)" || echo "Nothing to commit"
+          git push
