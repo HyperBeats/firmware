@@ -12,7 +12,7 @@ on:
         type: choice
         required: true
         default: "M5Cardputer"
-        options: ["M5Cardputer", "M5StickCPlus2", "ESP32-S3"]
+        options: ["M5Cardputer", "M5StickCPlus2", "ESP32-S3", "lilygo-t-embed-cc1101"]
 
 jobs:
   compile_sketch:
@@ -26,6 +26,11 @@ jobs:
               name: "ESP32-S3 - M5Cardputer",
               env: "m5stack-cardputer",
               partitions: { bootloader_addr: "0x0000" },
+            }
+           - {
+              name: "ESP32-S3 - lilygo-t-embed-cc1101",
+              env: "lilygo-t-embed-cc1101",
+              partitions: { bootloader_addr: "0x1000" },
             }
           - {
               name: "ESP32 - M5StickCPlus2",
